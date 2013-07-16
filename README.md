@@ -8,6 +8,10 @@ More detailed explanations are available in Section Features.
 Currently this version only supports Windows, but the only platform-dependent part is PPL.
 It should be trivial to transplant it into Linux (if you don't care about parallel training and testing).
 
+It's not a general library (yet). 
+It may need some effort to adapt it to your project, but wouldn't too much. 
+And it's still under development to make the code more general and clean. 
+
 Features
 ========
  * Optimized (or different) algorithms based on standard DT/RF algorithms
