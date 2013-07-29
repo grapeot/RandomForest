@@ -6,6 +6,8 @@
 #include <fstream>
 #include <string>
 #include <stack>
+#include <random>
+#include <numeric>
 #include <ppl.h>
 
 using namespace std;
@@ -15,14 +17,15 @@ template<int c> struct DT
 	const static int dim = 64;
 	bool leaf;
 	int label;
-	vector<float> w, meanx, maxabs, dist;
+	vector<float> w, dist;
 	float b;
 	DT<c> *left, *right;
-	DT(): w(dim), meanx(dim), maxabs(dim), dist(c), left(NULL), right(NULL), label(-1) {}
+	DT(): w(dim), dist(c), left(NULL), right(NULL), label(-1) {}
 
 	// free the space used by all the children nodes
 	static void Dispose(DT<c> *dt)
 	{
+		if (!dt) return;
 		if (dt->leaf) { delete dt; return; }
 		Dispose(dt->left);
 		Dispose(dt->right);
@@ -46,8 +49,8 @@ template<int c> struct DT
 
 		// build the node
 		pdt->leaf = false;
-		ifp.read((char *)&pdt->meanx[0], sizeof(float) * dim);
-		ifp.read((char *)&pdt->maxabs[0], sizeof(float) * dim);
+		//ifp.read((char *)&pdt->meanx[0], sizeof(float) * dim);
+		//ifp.read((char *)&pdt->maxabs[0], sizeof(float) * dim);
 		ifp.read((char *)&pdt->w[0], sizeof(float) * dim);
 		ifp.read((char *)&pdt->b, sizeof(float));
 		// build the left child
@@ -121,8 +124,8 @@ template<int c> struct DT
 		}
 		else
 		{
-			os.write((const char *)&this->meanx[0], sizeof(float) * dim);
-			os.write((const char *)&this->maxabs[0], sizeof(float) * dim);
+			//os.write((const char *)&this->meanx[0], sizeof(float) * dim);
+			//os.write((const char *)&this->maxabs[0], sizeof(float) * dim);
 			os.write((const char *)&this->w[0], sizeof(float) * dim);
 			os.write((const char *)&this->b, sizeof(float));
 			this->left->Serialize(os);
@@ -134,29 +137,30 @@ template<int c> struct DT
 	// Returns a pointer to the result decision tree.
 	static DT<c> *Train(vector<float> x, const vector<int> &y, int level)
 	{
-		return _Train(x, y, level);    // x was automatically copied and won't be affected when invoking this function.
+		vector<float> mu(dim, 0.0f), sigma(dim, 1.0f);
+		return _Train(x, y, mu, sigma, level);    // x was automatically copied and won't be affected when invoking this function.
 	}
 
 	// Internal implementation of the training algorithm.
 	// Note the features will be modified after training here.
-	static DT<c> *_Train(vector<float> &x, const vector<int> y, int level)
+	static DT<c> *_Train(vector<float> &x, const vector<int> &y, vector<float> mu, vector<float> sigma, int level)
 	{
 		const float minEntropy = 0.1;
-		const int minSample = 100;
+		const int minSample = 4;
 		const int classifierNum = 300;
 		const int bNum = 10;
 
 		bool isLeaf = false;
 		int n = x.size() / dim;
 		//cerr << Entropy(y) << ' ' << y.size() << endl;
-		if (n < minSample)
-		{
-			cerr << 'S';
-			isLeaf = true;
-		}
 		if (Entropy(y) < minEntropy)
 		{
 			cerr << 'E';
+			isLeaf = true;
+		}
+		if (n < minSample)
+		{
+			cerr << 'S';
 			isLeaf = true;
 		}
 		if (level < 0)
@@ -197,9 +201,16 @@ template<int c> struct DT
 		}
 		for(int i = 0; i < n; i++)
 			for (int j = 0; j < dim; j++)
-				x[i * dim + j] = (x[i * dim + j] - means[j]) / stdvar[j];
-		dt->meanx = means;
-		dt->maxabs = stdvar;
+				if (stdvar[j])
+					x[i * dim + j] = (x[i * dim + j] - means[j]) / stdvar[j];
+				else
+					x[i * dim + j] -= means[j];
+		// update mu and sigma
+		for (int d = 0; d < dim; d++)
+		{
+			mu[d] += sigma[d] * means[d];
+			sigma[d] *= stdvar[d];
+		}
 
 		// generate a classifier set
 		struct ClasEval { vector<float> w; float b, e, entropy, balance; int y1, y2; };
@@ -254,7 +265,7 @@ template<int c> struct DT
 				}
 			}
 			clasEvals[i].w = w;
-			clasEvals[i].b = -bestB;
+			clasEvals[i].b = -bestB;    // another tricky part
 			clasEvals[i].e = bestE;
 			clasEvals[i].y1 = bestY1;
 			clasEvals[i].y2 = bestY2;
@@ -295,32 +306,38 @@ template<int c> struct DT
 				y2.push_back(y[k]);
 			}
 		}
-		//cerr << " " << y1.size() << " -- " << y2.size() << endl;
-		dt->left = _Train(x1, y1, level - 1);
-		dt->right = _Train(x2, y2, level - 1);
+
+		// update according to sigma and mu
+		for (int d = 0; d < dim; d++)
+		{
+			if (sigma[d]) dt->w[d] /= sigma[d];
+			dt->b -= dt->w[d] * mu[d];
+		}
+
+		dt->left = _Train(x1, y1, mu, sigma, level - 1);
+		dt->right = _Train(x2, y2, mu, sigma, level - 1);
 		return dt;
 	}
 
-	vector<float> Classify(vector<float> x) const
+	const vector<float> &Classify(const vector<float> &x) const
 	{
 		if (leaf)
 			return dist;
 
-		float y = 0;
+		float y = b;
 		for (int i = 0; i < dim; i++)
 		{
-			x[i] -= meanx[i];
-			x[i] /= maxabs[i];
+			//x[i] -= meanx[i];
+			//x[i] /= maxabs[i];
 			y += x[i] * w[i];
 		}
-		y += b;
 		if (y >= 0)
 			return left->Classify(x);
 		else
 			return right->Classify(x);
 	}
 
-	int ClassifyLabel(vector<float> x) const
+	int ClassifyLabel(const vector<float> &x) const
 	{
 		auto result = Classify(x);
 		int m = 0;
@@ -338,28 +355,38 @@ template<int c> struct RF
 	// Classify the label. We treat feature as a row-major matrix with (length / 64) rows. That is, each feature is 64 dimensions as indicated in struct DT.
 	vector<int> ClassifyLabel(const vector<float> &feature) const
 	{
-		vector<float> dists(c);
-		int dim = DT<c>::dim;
-		int n = feature.size() / dim;
+		auto dists = Classify(feature);
+		int n = feature.size() / DT<c>::dim;
 		vector<int> result(n);
 		for(int row = 0; row < n; row++)
 		{
-			vector<float> rowFeature(dim);
-            memset(&dists[0], 0, sizeof(float) * dists.size());
-			copy(feature.begin() + row * dim, feature.begin() + (row + 1) * dim, rowFeature.begin());
-			for_each(dts.begin(), dts.end(), [&](const DT<c> *pdt)
-			{
-				auto treeDist = pdt->Classify(rowFeature);
-				for(int i = 0; i < c; i++) dists[i] += treeDist[i];
-			});
 			int maxDistI = 0;
 			for (int i = 1; i < c; i++)
-				if (dists[maxDistI] < dists[i])
+				if (dists[row * c + maxDistI] < dists[row * c + i])
 					maxDistI = i;
 			result[row] = maxDistI;
 		}
 		return result;
 	}
+
+	vector<float> Classify(const vector<float> &feature) const
+	{
+		int dim = DT<c>::dim;
+		int n = feature.size() / dim;
+		vector<float> result(n * c);
+        concurrency::parallel_for(0, n, [&](int row)
+		//for(int row = 0; row < n; row++)
+		{
+			vector<float> rowFeature(dim);
+			copy(feature.begin() + row * dim, feature.begin() + (row + 1) * dim, rowFeature.begin());
+			for_each(dts.begin(), dts.end(), [&](const DT<c> *pdt)
+			{
+				auto treeDist = pdt->Classify(rowFeature);
+				for(int i = 0; i < c; i++) result[row * c + i] += treeDist[i];  // may have numeric issues
+			});
+		});
+		return result;
+}	
 
 	void Serialize(ostream &os)
 	{
@@ -373,16 +400,24 @@ template<int c> struct RF
 
 	static RF<c> Train(const vector<float> &features, const vector<int> &labels, int treeNum = 5, int level = 16)
 	{
-		auto treeTrainingDataSize = labels.size() / treeNum;
+		auto treeTrainingDataSize = (treeNum - 1) * labels.size() / treeNum;
 		int dim = DT<c>::dim;
 		RF<c> rf;
 		// train the trees one by one
 		for (int treeId = 0; treeId < treeNum; treeId++)
 		{
+			// randomly adopt (treeNum - 1) / treeNum examples for training
 			vector<float> featuresForTheTree(treeTrainingDataSize * dim);
 			vector<int> labelsForTheTree(treeTrainingDataSize);
-			copy(features.begin() + treeTrainingDataSize * treeId * dim, features.begin() + treeTrainingDataSize * (treeId + 1) * dim, featuresForTheTree.begin());
-			copy(labels.begin() + treeTrainingDataSize * treeId, labels.begin() + treeTrainingDataSize * (treeId + 1), labelsForTheTree.begin());
+			vector<int> chosenIdx(labels.size());
+			for(int i = 0; i < labels.size(); i++) chosenIdx[i] = i;
+			shuffle(chosenIdx.begin(), chosenIdx.end(), default_random_engine(0));
+			chosenIdx.resize(treeTrainingDataSize);
+			for(int i = 0; i < chosenIdx.size(); i++) 
+			{
+				for (int j = 0; j < dim; j++) featuresForTheTree[i * dim + j] = features[chosenIdx[i] * dim + j];
+				labelsForTheTree[i] = labels[chosenIdx[i]];
+			}
 			rf.dts.push_back(DT<c>::Train(featuresForTheTree, labelsForTheTree, level));
 			cerr << endl;
 		}
@@ -394,14 +429,13 @@ template<int c> struct RF
 		RF<c> rf;
 		int count = 0;
 		is.read((char *)&count, sizeof(int));
-        rf.dts.resize(count);
-        for(int i = 0; i < count; i++)
+		rf.dts.resize(count);
+		for(int i = 0; i < count; i++)
 		{
-		    rf.dts[i] = DT<c>::ParseFromStream(is);
+			rf.dts[i] = DT<c>::ParseFromStream(is);
 		}
-        return rf;
+		return rf;
 	}
-
 
 	void Dispose()
 	{
