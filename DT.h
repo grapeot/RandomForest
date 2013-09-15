@@ -12,6 +12,7 @@
 
 using namespace std;
 
+// c is for class number
 template<int c> struct DT
 {
 	const static int dim = 64;
