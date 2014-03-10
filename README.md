@@ -22,7 +22,7 @@ And it may need some effort to adapt it to your project, but wouldn't be too muc
 
 ## Usage
 
-## Configurations
+### Configurations
 
 The class number (`LabelNum`) and feature dimensions (`dim`) are specified in `/include/config.h`.
 Change these two values to adapt the code to your program.
@@ -49,6 +49,8 @@ There is nothing to compile to use the code. Just `#include "DT.h"` and `#includ
 Check `/src/main.cpp` for the code to train the DT/RF.
 `merger.cpp` is to provide some naive distributed training capability, which I found especially useful to be used with AWS's Spot Request and `rsync`.
 To compile the code, use the provided VS solution file in `/src/VS` or Makefile in `/src`.
+
+To switch on and off the feature normalization, define (switched on) or not define (switched off) the macro `_WHITENING` in the VS solution or the Makefile. This feature is turned on by default.
 
 ## Known issues
 

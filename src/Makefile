@@ -1,6 +1,6 @@
 CC=g++
 OPENMP_FLAG=-fopenmp
-CFLAG=-O3 -std=c++11 -I../include
+CFLAG=-O3 -std=c++11 -I../include -D_WHITENING
 
 all: main merger
 

@@ -191,6 +191,7 @@ template<int c, int dim> struct DT
 		cerr << '.';
 		// preprocessing: get the mean and stdvar first
 		vector<float> means(dim, 0), means2(dim, 0), stdvar(dim, 1);
+#ifdef _WHITENING
 		 for(int i = 0; i < n; i++)
 		 {
 		 	for (int j = 0; j < dim; j++)
@@ -212,6 +213,7 @@ template<int c, int dim> struct DT
 		 			x[i * dim + j] = (x[i * dim + j] - means[j]) / stdvar[j];
 		 		else
 		 			x[i * dim + j] -= means[j];
+#endif
 		// update mu and sigma
 		for (int d = 0; d < dim; d++)
 		{
