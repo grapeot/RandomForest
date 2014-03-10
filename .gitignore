@@ -1,3 +1,6 @@
+# Mac related temp files
+.D[Ss]_Store
+
 # Compiled Object files
 *.slo
 *.lo
