@@ -428,9 +428,9 @@ template<int c, int dim> struct RF
 			vector<int> labelsForTheTree(treeTrainingDataSize);
 			vector<int> chosenIdx(labels.size());
 			for(int i = 0; i < labels.size(); i++) chosenIdx[i] = i;
-			shuffle(chosenIdx.begin(), chosenIdx.end(), default_random_engine(0));
+			shuffle(chosenIdx.begin(), chosenIdx.end(), default_random_engine(1));
 			chosenIdx.resize(treeTrainingDataSize);
-			for(int i = 0; i < chosenIdx.size(); i++) 
+			for(int i = 0; i < treeTrainingDataSize; i++) 
 			{
 				for (int j = 0; j < dim; j++) featuresForTheTree[i * dim + j] = features[chosenIdx[i] * dim + j];
 				labelsForTheTree[i] = labels[chosenIdx[i]];
